@@ -2,7 +2,10 @@
 
 ### 📘 Course: Big Data 2025 (UE23CS343AB2)
 **Team Members:**  
-- Rithvik Matta (PES2UG23CS485)  
+- Rithvik Matta (PES2UG23CS485)
+- Retesh G S (PES2UG23CS475)
+- Rishil Abhijit Jalsagi (PES2UG23CS482)
+- Rithvik Hemanth (PES2UG23CS484)
 - [Add other team members if applicable]
 
 ---
