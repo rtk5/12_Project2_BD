@@ -1,0 +1,152 @@
+import os, socket, threading, time, json, struct, logging, hashlib
+
+# ===============================
+# CONFIGURATION
+# ===============================
+def load_config():
+    with open("config.json") as f:
+        return json.load(f)
+
+config = load_config()
+
+# ===============================
+# LOGGING
+# ===============================
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s | %(levelname)s | %(threadName)s | %(message)s"
+)
+log = logging.getLogger("datanode1")
+
+# ===============================
+# HELPERS
+# ===============================
+def recv_exact(conn, n):
+    buf = b""
+    while len(buf) < n:
+        part = conn.recv(n - len(buf))
+        if not part:
+            return None
+        buf += part
+    return buf
+
+def checksum(data):
+    return hashlib.md5(data).hexdigest()
+
+# ===============================
+# DATANODE 1 MAIN LOGIC
+# ===============================
+def datanode_1(node_id, host, port, storage_dir, namenode_host, namenode_heartbeat_port):
+    os.makedirs(storage_dir, exist_ok=True)
+    log.info(f"[START] Datanode1 (replica) {node_id} running at {host}:{port}")
+
+    # --------------------------------
+    # (2) Heartbeat thread
+    # --------------------------------
+    def send_heartbeat():
+        while True:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.sendto(node_id.encode(), (namenode_host, namenode_heartbeat_port))
+                s.close()
+                log.debug(f"[HEARTBEAT] Sent heartbeat from {node_id}")
+            except Exception as e:
+                log.error(f"[HEARTBEAT_FAIL] {e}")
+            time.sleep(config["heartbeat_interval_sec"])
+
+    # --------------------------------
+    # (1), (3), (4): Chunk storage and retrieval
+    # --------------------------------
+    def listen_for_replication():
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((host, port))
+        s.listen()
+        log.info(f"[LISTEN] Datanode1 ready on {host}:{port}")
+
+        while True:
+            conn, addr = s.accept()
+            try:
+                # Read command
+                cmd = b""
+                while not cmd.endswith(b"\n"):
+                    part = conn.recv(1)
+                    if not part:
+                        break
+                    cmd += part
+                cmd = cmd.decode().strip()
+                log.debug(f"[CMD] Received command '{cmd}' from {addr}")
+
+                # Read header
+                hdr_len_raw = recv_exact(conn, 4)
+                if not hdr_len_raw:
+                    log.error("[HEADER_ERROR] Incomplete header length")
+                    continue
+
+                hdr_len = struct.unpack(">I", hdr_len_raw)[0]
+                header_raw = recv_exact(conn, hdr_len)
+                if not header_raw:
+                    log.error("[HEADER_ERROR] Incomplete header")
+                    continue
+
+                header = json.loads(header_raw.decode())
+
+                # Handle REPLICATE / STORE command
+                if cmd in ("REPLICATE", "STORE"):
+                    chunk_name = header["chunk_name"]
+                    size = header["size"]
+                    checksum_ref = header.get("checksum")
+                    conn.sendall(b"READY")  # important handshake
+
+                    # Receive data
+                    data = b""
+                    while len(data) < size:
+                        block = conn.recv(min(4096, size - len(data)))
+                        if not block:
+                            break
+                        data += block
+
+                    # Verify checksum
+                    local_sum = checksum(data)
+                    if checksum_ref and local_sum != checksum_ref:
+                        log.warning(f"[CHECK_FAIL] {chunk_name} corrupted during transfer!")
+                        continue
+
+                    # Write chunk to storage
+                    path = os.path.join(storage_dir, chunk_name)
+                    with open(path, "wb") as f:
+                        f.write(data)
+
+                    log.info(f"[STORE_OK] Stored {chunk_name} ({len(data)} bytes) MD5={local_sum}")
+
+                elif cmd == "GET":
+                    chunk_name = header["chunk_name"]
+                    path = os.path.join(storage_dir, chunk_name)
+                    if not os.path.isfile(path):
+                        log.error(f"[GET_ERROR] Missing replica {chunk_name}")
+                        continue
+
+                    with open(path, "rb") as f:
+                        data = f.read()
+
+                    conn.sendall(data)
+                    log.info(f"[GET_OK] Sent {chunk_name} ({len(data)} bytes)")
+
+                else:
+                    log.error(f"[CMD_ERROR] Unknown command '{cmd}'")
+
+            except Exception as e:
+                log.exception(f"[ERROR] {e}")
+            finally:
+                conn.close()
+
+    threading.Thread(target=send_heartbeat, daemon=True, name="dn1-heartbeat").start()
+    listen_for_replication()
+
+# ===============================
+# ENTRY POINT
+# ===============================
+if __name__ == "__main__":
+    cfg = config["datanodes"]["dn1"]
+    nn = config["namenode"]
+    datanode_1("dn1", cfg["host"], cfg["port"], cfg["storage_dir"], nn["host"], nn["heartbeat_port"])
