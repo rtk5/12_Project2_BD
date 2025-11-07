@@ -57,7 +57,7 @@ def datanode_1(node_id, host, port, storage_dir, namenode_host, namenode_heartbe
     # --------------------------------
     # (1), (3), (4): Chunk storage and retrieval
     # --------------------------------
-    def listen_for_replication():
+    def listen_for_chunks():
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind((host, port))
@@ -81,22 +81,23 @@ def datanode_1(node_id, host, port, storage_dir, namenode_host, namenode_heartbe
                 hdr_len_raw = recv_exact(conn, 4)
                 if not hdr_len_raw:
                     log.error("[HEADER_ERROR] Incomplete header length")
+                    conn.close()
                     continue
 
                 hdr_len = struct.unpack(">I", hdr_len_raw)[0]
                 header_raw = recv_exact(conn, hdr_len)
                 if not header_raw:
                     log.error("[HEADER_ERROR] Incomplete header")
+                    conn.close()
                     continue
 
                 header = json.loads(header_raw.decode())
 
-                # Handle REPLICATE / STORE command
                 if cmd in ("REPLICATE", "STORE"):
                     chunk_name = header["chunk_name"]
                     size = header["size"]
                     checksum_ref = header.get("checksum")
-                    conn.sendall(b"READY")  # important handshake
+                    conn.sendall(b"READY")  # handshake
 
                     # Receive data
                     data = b""
@@ -109,14 +110,14 @@ def datanode_1(node_id, host, port, storage_dir, namenode_host, namenode_heartbe
                     # Verify checksum
                     local_sum = checksum(data)
                     if checksum_ref and local_sum != checksum_ref:
-                        log.warning(f"[CHECK_FAIL] {chunk_name} corrupted during transfer!")
+                        log.warning(f"[CHECK_FAIL] {chunk_name} corrupted during transfer! REF={checksum_ref} LOCAL={local_sum}")
+                        conn.sendall(b"ERROR:CHECKSUM_FAIL")
                         continue
 
                     # Write chunk to storage
                     path = os.path.join(storage_dir, chunk_name)
                     with open(path, "wb") as f:
                         f.write(data)
-
                     log.info(f"[STORE_OK] Stored {chunk_name} ({len(data)} bytes) MD5={local_sum}")
 
                 elif cmd == "GET":
@@ -124,13 +125,20 @@ def datanode_1(node_id, host, port, storage_dir, namenode_host, namenode_heartbe
                     path = os.path.join(storage_dir, chunk_name)
                     if not os.path.isfile(path):
                         log.error(f"[GET_ERROR] Missing replica {chunk_name}")
+                        conn.sendall(b"ERROR:NOT_FOUND")
                         continue
 
                     with open(path, "rb") as f:
                         data = f.read()
+                    stored_sum = checksum(data)
+                    # Optionally verify checksum if provided
+                    if "checksum" in header and header["checksum"] != stored_sum:
+                        log.error(f"[INTEGRITY_FAIL] Replica {chunk_name} MD5 mismatch on GET")
+                        conn.sendall(b"ERROR:INTEGRITY_FAIL")
+                        continue
 
                     conn.sendall(data)
-                    log.info(f"[GET_OK] Sent {chunk_name} ({len(data)} bytes)")
+                    log.info(f"[GET_OK] Sent {chunk_name} ({len(data)} bytes) MD5={stored_sum}")
 
                 else:
                     log.error(f"[CMD_ERROR] Unknown command '{cmd}'")
@@ -141,7 +149,7 @@ def datanode_1(node_id, host, port, storage_dir, namenode_host, namenode_heartbe
                 conn.close()
 
     threading.Thread(target=send_heartbeat, daemon=True, name="dn1-heartbeat").start()
-    listen_for_replication()
+    listen_for_chunks()
 
 # ===============================
 # ENTRY POINT
