@@ -6,7 +6,7 @@
 - Retesh G S (PES2UG23CS475)
 - Rishil Abhijit Jalsagi (PES2UG23CS482)
 - Rithvik Hemanth (PES2UG23CS484)
-- [Add other team members if applicable]
+
 
 ---
 
@@ -133,9 +133,9 @@ http://localhost:5000
 
 ---
 
-## 🧮 Evaluation Breakdown
+## 🧮 Project  Breakdown
 
-### Node Responsibilities (10 Marks each)
+### Node Responsibilities 
 
 | Node | Key Components |
 |------|----------------|
@@ -144,24 +144,8 @@ http://localhost:5000
 | **Datanode #0** | Chunk storage, heartbeat sender, retrieval logic, error handling |
 | **Datanode #1** | Replica handling, consistency checks, recovery robustness |
 
-### Additional Marks
 
-| Component | Marks |
-|-----------|-------|
-| **Viva (3 x 5 Marks)** | 15 |
-| **End-to-End Pipeline** | 5 |
-| **Total** | 30 Marks (Scaled down to 10) |
 
----
-
-## 🧠 Optional: Secondary Namenode (Bonus Feature)
-
-For advanced implementation:
-- Periodically merge FSImage (metadata snapshot) and Edit Logs.
-- Maintain a compact and efficient metadata state.
-- Improve fault recovery and Namenode scalability.
-
----
 
 ## 🧾 Example Workflow
 
