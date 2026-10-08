@@ -1,0 +1,21 @@
+# ============================================================
+# Mini HDFS Simulation - Python dependencies
+# ============================================================
+#
+# The project needs exactly ONE third-party package:
+#
+#   Flask  -> used by Client/client.py for the web dashboard
+#            (upload / download / live logs / system status)
+#
+# Everything else in the project (sockets, threading, JSON,
+# struct, hashlib, logging, os) comes from the Python
+# standard library, so no other packages are required.
+#
+# Requires: Python 3.8 or newer
+#
+# Install with:
+#   pip install -r requirements.txt
+#
+# ============================================================
+
+Flask>=2.3.0
