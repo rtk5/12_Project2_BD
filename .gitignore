@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Runtime data created by the simulation
+# (chunk storage created on the Datanodes)
+storage_dn0/
+storage_dn1/
+storage/
+
+# Files uploaded through the client dashboard
+reconstructed_*
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
